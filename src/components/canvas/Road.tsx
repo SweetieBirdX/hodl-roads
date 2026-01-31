@@ -52,6 +52,14 @@ export default function Road() {
                     />
                 </mesh>
             </RigidBody>
+
+            {/* Launchpad (Safety Start Zone) */}
+            <RigidBody type="fixed" friction={2}>
+                <mesh position={[-10, -1, 0]} receiveShadow>
+                    <boxGeometry args={[20, 1, 10]} />
+                    <meshStandardMaterial color="#444" />
+                </mesh>
+            </RigidBody>
         </group>
     );
 }
