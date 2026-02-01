@@ -103,12 +103,13 @@ export default function Vehicle() {
                 position={[-10, 3, 0]}
                 mass={15}
                 colliders={false}
-                linearDamping={0.5}
-                angularDamping={0.5}
+                restitution={0}
+                linearDamping={1.5}
+                angularDamping={1.5}
                 enabledTranslations={[true, true, false]} // Allow X/Y but LOCK Z
                 enabledRotations={[false, false, true]}   // Lock X/Y (Roll/Steer), Allow Z (Pitch)
             >
-                <CuboidCollider args={[1.5, 0.5, CHASSIS_HALF_WIDTH]} />
+                <CuboidCollider args={[1.5, 0.5, CHASSIS_HALF_WIDTH]} restitution={0} />
                 <mesh castShadow receiveShadow>
                     <boxGeometry args={[3, 1, CHASSIS_HALF_WIDTH * 2]} />
                     <meshStandardMaterial color="orange" />
@@ -171,9 +172,10 @@ function WheelController({ chassis, controls, anchorX, anchorZ }: {
             mass={1}
             friction={2}
             restitution={0}
+            linearDamping={0.5}
             angularDamping={0.5}
         >
-            <CylinderCollider args={[WHEEL_THICKNESS / 2, WHEEL_RADIUS]} rotation={[Math.PI / 2, 0, 0]} />
+            <CylinderCollider args={[WHEEL_THICKNESS / 2, WHEEL_RADIUS]} rotation={[Math.PI / 2, 0, 0]} restitution={0} />
             <mesh rotation={[Math.PI / 2, 0, 0]}>
                 <cylinderGeometry args={[WHEEL_RADIUS, WHEEL_RADIUS, WHEEL_THICKNESS, 16]} />
                 <meshStandardMaterial color="#333" />
