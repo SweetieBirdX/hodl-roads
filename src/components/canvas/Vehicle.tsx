@@ -2,13 +2,16 @@
 
 import { useRef, useState, useEffect, RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
-import { RigidBody, RapierRigidBody, useRevoluteJoint, CuboidCollider, CylinderCollider } from "@react-three/rapier";
+import { RigidBody, RapierRigidBody, useRevoluteJoint, CuboidCollider, CylinderCollider, useRapier } from "@react-three/rapier";
+import { Ray } from "@dimforge/rapier3d-compat";
 import * as THREE from "three";
 import { useGameStore } from "@/store/useGameStore";
 
 // --- VEHICLE CONFIGURATION ---
-const CHASSIS_HALF_WIDTH = 0.75;  // Half Z-size of chassis collider
-const WHEEL_THICKNESS = 0.3;     // Wheel "height" (Z-direction when rotated)
+const CHASSIS_HALF_LENGTH = 1.5;  // Half X-size of chassis (total length = 3)
+const CHASSIS_HALF_HEIGHT = 0.3;  // Half Y-size of chassis (total height = 0.6)
+const CHASSIS_HALF_WIDTH = 0.9;   // Half Z-size of chassis (total width = 1.8)
+const WHEEL_THICKNESS = 0.3;      // Wheel "height" (Z-direction when rotated)
 const WHEEL_RADIUS = 0.4;
 const WHEEL_Z_OFFSET = CHASSIS_HALF_WIDTH + WHEEL_THICKNESS / 2 + 0.1; // Ensure no overlap
 
@@ -20,6 +23,12 @@ export default function Vehicle() {
 
     // Store update
     const setSpeed = useGameStore((state) => state.setSpeed);
+
+    // Physics world for raycasting
+    const { world } = useRapier();
+
+    // Ground check state
+    const [isGrounded, setIsGrounded] = useState(true);
 
     // Input Listeners
     useEffect(() => {
@@ -67,7 +76,16 @@ export default function Vehicle() {
     useFrame((state) => {
         if (!chassis.current) return;
 
-        // 1. Air Control (Tilt)
+        // 0. Ground Check via Raycast
+        const chassisPos = chassis.current.translation();
+        const ray = new Ray(
+            { x: chassisPos.x, y: chassisPos.y, z: chassisPos.z },
+            { x: 0, y: -1, z: 0 } // Downward
+        );
+        const hit = world.castRay(ray, 1.5, true); // maxToi = 1.5 units
+        setIsGrounded(hit !== null);
+
+        // 1. Air Control (Tilt) - ALWAYS ACTIVE
         const tiltStrength = 30;
         if (controls.leftTilt) {
             chassis.current.wakeUp();
@@ -79,7 +97,6 @@ export default function Vehicle() {
         }
 
         // 2. Camera Follow
-        const chassisPos = chassis.current.translation();
         const cameraOffset = new THREE.Vector3(0, 5, 20); // Side view
 
         // Smooth Camera
@@ -101,45 +118,46 @@ export default function Vehicle() {
             <RigidBody
                 ref={chassis}
                 position={[-10, 3, 0]}
-                mass={15}
+                mass={20}
                 colliders={false}
                 restitution={0}
                 linearDamping={1.5}
-                angularDamping={1.5}
+                angularDamping={2.5}
                 enabledTranslations={[true, true, false]} // Allow X/Y but LOCK Z
                 enabledRotations={[false, false, true]}   // Lock X/Y (Roll/Steer), Allow Z (Pitch)
             >
-                <CuboidCollider args={[1.5, 0.5, CHASSIS_HALF_WIDTH]} restitution={0} />
+                <CuboidCollider args={[CHASSIS_HALF_LENGTH, CHASSIS_HALF_HEIGHT, CHASSIS_HALF_WIDTH]} restitution={0} />
                 <mesh castShadow receiveShadow>
-                    <boxGeometry args={[3, 1, CHASSIS_HALF_WIDTH * 2]} />
+                    <boxGeometry args={[CHASSIS_HALF_LENGTH * 2, CHASSIS_HALF_HEIGHT * 2, CHASSIS_HALF_WIDTH * 2]} />
                     <meshStandardMaterial color="orange" />
                 </mesh>
                 {/* Cabin Visual */}
-                <mesh position={[-0.5, 0.75, 0]}>
-                    <boxGeometry args={[1.5, 0.5, CHASSIS_HALF_WIDTH * 2 - 0.1]} />
+                <mesh position={[-0.3, CHASSIS_HALF_HEIGHT + 0.25, 0]}>
+                    <boxGeometry args={[1.2, 0.5, CHASSIS_HALF_WIDTH * 2 - 0.2]} />
                     <meshStandardMaterial color="#cc6600" />
                 </mesh>
             </RigidBody>
 
-            {/* WHEELS - Positioned OUTSIDE the chassis on Z-axis */}
+            {/* WHEELS - Positioned at corners of chassis */}
             {/* Front-Right */}
-            <WheelController chassis={chassis} controls={controls} anchorX={1.2} anchorZ={WHEEL_Z_OFFSET} />
+            <WheelController chassis={chassis} controls={controls} anchorX={1.2} anchorZ={WHEEL_Z_OFFSET} isGrounded={isGrounded} />
             {/* Front-Left */}
-            <WheelController chassis={chassis} controls={controls} anchorX={1.2} anchorZ={-WHEEL_Z_OFFSET} />
+            <WheelController chassis={chassis} controls={controls} anchorX={1.2} anchorZ={-WHEEL_Z_OFFSET} isGrounded={isGrounded} />
             {/* Rear-Right */}
-            <WheelController chassis={chassis} controls={controls} anchorX={-1.2} anchorZ={WHEEL_Z_OFFSET} />
+            <WheelController chassis={chassis} controls={controls} anchorX={-1.2} anchorZ={WHEEL_Z_OFFSET} isGrounded={isGrounded} />
             {/* Rear-Left */}
-            <WheelController chassis={chassis} controls={controls} anchorX={-1.2} anchorZ={-WHEEL_Z_OFFSET} />
+            <WheelController chassis={chassis} controls={controls} anchorX={-1.2} anchorZ={-WHEEL_Z_OFFSET} isGrounded={isGrounded} />
         </group>
     );
 }
 
 // Sub-component to manage wheel physics and joints
-function WheelController({ chassis, controls, anchorX, anchorZ }: {
+function WheelController({ chassis, controls, anchorX, anchorZ, isGrounded }: {
     chassis: RefObject<RapierRigidBody | null>,
     controls: any,
     anchorX: number,
-    anchorZ: number
+    anchorZ: number,
+    isGrounded: boolean
 }) {
     const wheel = useRef<RapierRigidBody>(null);
 
@@ -153,14 +171,22 @@ function WheelController({ chassis, controls, anchorX, anchorZ }: {
 
     useFrame(() => {
         if (!wheel.current) return;
-        const torque = 0.25; // Reduced power (50% nerf)
-        if (controls.forward) {
-            wheel.current.wakeUp();
-            wheel.current.applyTorqueImpulse({ x: 0, y: 0, z: -torque }, true);
-        }
-        if (controls.backward) {
-            wheel.current.wakeUp();
-            wheel.current.applyTorqueImpulse({ x: 0, y: 0, z: torque }, true);
+
+        // Only apply torque if grounded
+        if (isGrounded) {
+            const torque = 0.5; // Power for hill climbing
+            if (controls.forward) {
+                wheel.current.wakeUp();
+                wheel.current.applyTorqueImpulse({ x: 0, y: 0, z: -torque }, true);
+            }
+            if (controls.backward) {
+                wheel.current.wakeUp();
+                wheel.current.applyTorqueImpulse({ x: 0, y: 0, z: torque }, true);
+            }
+        } else {
+            // In air: Apply braking to stop wheel spin
+            const angvel = wheel.current.angvel();
+            wheel.current.setAngvel({ x: angvel.x * 0.95, y: angvel.y * 0.95, z: angvel.z * 0.95 }, true);
         }
     });
 
