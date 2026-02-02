@@ -26,7 +26,7 @@ const CONFIG = {
     sideFriction: 200,     // Grip to prevent sliding
     maxSteer: 0,           // 2.5D game, no steering needed
     // Air Control
-    airControlTorque: 80,  // Torque for tilting in air
+    airControlTorque: 200,  // Torque for tilting (Increased for ground control)
 };
 
 // Wheel Offsets (Relative to Chassis Center)
@@ -158,11 +158,9 @@ export default function Vehicle() {
             }
         });
 
-        // 3. Air Control
-        if (groundedWheels < 2) {
-            if (left) chassis.applyTorqueImpulse({ x: 0, y: 0, z: CONFIG.airControlTorque * delta }, true); // Tilt Back
-            if (right) chassis.applyTorqueImpulse({ x: 0, y: 0, z: -CONFIG.airControlTorque * delta }, true); // Tilt Fwd
-        }
+        // 3. Rotation Control (Air & Ground)
+        if (left) chassis.applyTorqueImpulse({ x: 0, y: 0, z: CONFIG.airControlTorque * delta }, true); // Tilt Back
+        if (right) chassis.applyTorqueImpulse({ x: 0, y: 0, z: -CONFIG.airControlTorque * delta }, true); // Tilt Fwd
 
         // 4. Camera Follow
         const cameraOffset = new THREE.Vector3(0, 6, 25);
