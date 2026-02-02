@@ -1,211 +1,226 @@
 "use client";
 
-import { useRef, useState, useEffect, RefObject } from "react";
+import { useRef, useState, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
-import { RigidBody, RapierRigidBody, useRevoluteJoint, CuboidCollider, CylinderCollider, useRapier } from "@react-three/rapier";
+import { RigidBody, RapierRigidBody, useRapier, CuboidCollider } from "@react-three/rapier";
 import { Ray } from "@dimforge/rapier3d-compat";
 import * as THREE from "three";
-import { useGameStore } from "@/store/useGameStore";
+import { useKeyboardControls } from "@react-three/drei";
 
 // --- VEHICLE CONFIGURATION ---
-const CHASSIS_HALF_LENGTH = 1.5;  // Half X-size of chassis (total length = 3)
-const CHASSIS_HALF_HEIGHT = 0.3;  // Half Y-size of chassis (total height = 0.6)
-const CHASSIS_HALF_WIDTH = 0.9;   // Half Z-size of chassis (total width = 1.8)
-const WHEEL_THICKNESS = 0.3;      // Wheel "height" (Z-direction when rotated)
-const WHEEL_RADIUS = 0.4;
-const WHEEL_Z_OFFSET = CHASSIS_HALF_WIDTH + WHEEL_THICKNESS / 2 + 0.1; // Ensure no overlap
+const CONFIG = {
+    // Dimensions
+    width: 2.2,
+    length: 4.0,
+    // Physics
+    chassisMass: 300,      // HEAVIER body for stability
+    restLength: 0.8,       // Suspension rest length
+    suspensionTravel: 0.6, // How far wheels can move
+    stiffness: 120,        // Softer springs
+    damping: 20,           // Higher damping to stop bouncing
+    rayLength: 1.5,        // Max ray distance (RestLength + Travel)
+    wheelRadius: 0.5,
+    // Drive
+    engineForce: 200,     // Drastically reduced for slow speed
+    brakingForce: 50,      // Reduced braking too
+    sideFriction: 200,     // Grip to prevent sliding
+    maxSteer: 0,           // 2.5D game, no steering needed
+    // Air Control
+    airControlTorque: 80,  // Torque for tilting in air
+};
+
+// Wheel Offsets (Relative to Chassis Center)
+const WHEEL_OFFSETS = [
+    { x: CONFIG.length / 2 - 0.6, z: -CONFIG.width / 2 + 0.4 }, // Front Left
+    { x: CONFIG.length / 2 - 0.6, z: CONFIG.width / 2 - 0.4 },  // Front Right
+    { x: -CONFIG.length / 2 + 0.6, z: -CONFIG.width / 2 + 0.4 },// Rear Left
+    { x: -CONFIG.length / 2 + 0.6, z: CONFIG.width / 2 - 0.4 }, // Rear Right
+];
 
 export default function Vehicle() {
-    const chassis = useRef<RapierRigidBody>(null);
-
-    // Controls State
-    const [controls, setControls] = useState({ forward: false, backward: false, leftTilt: false, rightTilt: false });
-
-    // Store update
-    const setSpeed = useGameStore((state) => state.setSpeed);
-
-    // Physics world for raycasting
+    const chassisRef = useRef<RapierRigidBody>(null);
     const { world } = useRapier();
+    const [, get] = useKeyboardControls();
 
-    // Ground check state
-    const [isGrounded, setIsGrounded] = useState(true);
+    // Visual Wheel Refs
+    const flWheel = useRef<THREE.Group>(null);
+    const frWheel = useRef<THREE.Group>(null);
+    const rlWheel = useRef<THREE.Group>(null);
+    const rrWheel = useRef<THREE.Group>(null);
+    const wheelVisuals = [flWheel, frWheel, rlWheel, rrWheel];
 
-    // Input Listeners
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            switch (e.key.toLowerCase()) {
-                case "w": case "arrowup": setControls(c => ({ ...c, forward: true })); break;
-                case "s": case "arrowdown": setControls(c => ({ ...c, backward: true })); break;
-                case "a": case "arrowleft": setControls(c => ({ ...c, leftTilt: true })); break;
-                case "d": case "arrowright": setControls(c => ({ ...c, rightTilt: true })); break;
-                case "r": handleRescue(); break; // Rescue mechanic
+    useFrame((state, delta) => {
+        if (!chassisRef.current) return;
+        const chassis = chassisRef.current;
+        const { forward, backward, left, right } = get();
+
+        // 1. Get Chassis State
+        const transform = chassis.translation();
+        const rotation = chassis.rotation();
+        const chassisPos = new THREE.Vector3(transform.x, transform.y, transform.z);
+        const chassisQuat = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
+
+        // Directions
+        const upDir = new THREE.Vector3(0, 1, 0).applyQuaternion(chassisQuat);
+        const forwardDir = new THREE.Vector3(1, 0, 0).applyQuaternion(chassisQuat);
+        const rightDir = new THREE.Vector3(0, 0, 1).applyQuaternion(chassisQuat);
+
+        // Velocity (Linear & Angular)
+        const linVel = chassis.linvel();
+        const angVel = chassis.angvel();
+        const chassisVel = new THREE.Vector3(linVel.x, linVel.y, linVel.z);
+        const chassisAngVel = new THREE.Vector3(angVel.x, angVel.y, angVel.z);
+
+        let groundedWheels = 0;
+
+        // 2. Raycast Loop for each wheel
+        WHEEL_OFFSETS.forEach((offset, i) => {
+            // Calculate Ray Origin
+            const localOffset = new THREE.Vector3(offset.x, 0, offset.z);
+            const wheelAttachPos = localOffset.clone().applyQuaternion(chassisQuat).add(chassisPos);
+
+            // Raycast Down relative to chassis
+            const rayDir = upDir.clone().negate();
+            const rayOrigin = wheelAttachPos.clone().add(upDir.clone().multiplyScalar(0.5)); // Start slightly above
+
+            const ray = new Ray(
+                { x: rayOrigin.x, y: rayOrigin.y, z: rayOrigin.z },
+                { x: rayDir.x, y: rayDir.y, z: rayDir.z }
+            );
+
+            // Cast Ray
+            const hit = world.castRay(ray, CONFIG.rayLength, true, undefined, undefined, undefined, chassis);
+
+            let suspensionDist = CONFIG.rayLength; // Default: Fully extended
+
+            if (hit) {
+                groundedWheels++;
+                suspensionDist = hit.timeOfImpact;
+
+                // --- PHYSICS FORCES ---
+
+                // A. Suspension Force (Spring + Damper)
+                // Velocity at wheel contact point = v_cm + (w x r)
+                const r = wheelAttachPos.clone().sub(chassisPos);
+                const velAtWheel = chassisVel.clone().add(chassisAngVel.clone().cross(r));
+
+                const compression = Math.max(0, CONFIG.rayLength - suspensionDist);
+                // V_up = Velocity projected onto Up vector
+                const compressionSpeed = velAtWheel.dot(upDir);
+
+                const springForce = (compression * CONFIG.stiffness) - (compressionSpeed * CONFIG.damping);
+
+                // Apply Suspension Impulse
+                const impulse = upDir.clone().multiplyScalar(springForce * delta);
+                chassis.applyImpulseAtPoint({ x: impulse.x, y: impulse.y, z: impulse.z }, { x: wheelAttachPos.x, y: wheelAttachPos.y, z: wheelAttachPos.z }, true);
+
+                // B. Side Friction (Prevent sliding)
+                const sideSpeed = velAtWheel.dot(rightDir);
+                const sideImpulse = rightDir.clone().multiplyScalar(-sideSpeed * CONFIG.sideFriction * delta);
+                chassis.applyImpulseAtPoint({ x: sideImpulse.x, y: sideImpulse.y, z: sideImpulse.z }, { x: wheelAttachPos.x, y: wheelAttachPos.y, z: wheelAttachPos.z }, true);
+
+                // C. Drive Force (Acceleration)
+                let drive = 0;
+                if (forward) drive = CONFIG.engineForce;
+                if (backward) drive = -CONFIG.engineForce; // Simple reverse
+
+                if (drive !== 0) {
+                    const driveImpulse = forwardDir.clone().multiplyScalar(drive * delta);
+                    chassis.applyImpulseAtPoint({ x: driveImpulse.x, y: driveImpulse.y, z: driveImpulse.z }, { x: wheelAttachPos.x, y: wheelAttachPos.y, z: wheelAttachPos.z }, true);
+                }
             }
-        };
-        const handleKeyUp = (e: KeyboardEvent) => {
-            switch (e.key.toLowerCase()) {
-                case "w": case "arrowup": setControls(c => ({ ...c, forward: false })); break;
-                case "s": case "arrowdown": setControls(c => ({ ...c, backward: false })); break;
-                case "a": case "arrowleft": setControls(c => ({ ...c, leftTilt: false })); break;
-                case "d": case "arrowright": setControls(c => ({ ...c, rightTilt: false })); break;
+
+            // --- VISUAL UPDATE ---
+            const visualWheel = wheelVisuals[i].current;
+            if (visualWheel) {
+                // Determine visual position based on suspension compression
+                // Local Y = -suspensionDist + wheelRadius
+                // But ray starts at +0.5 relative to attach point
+                // So visual relative position:
+                // We want: if hit dist is `d`, wheel center is at `rayOrigin + rayDir * d`.
+                // Convert back to local space.
+
+                let wheelWorldPos;
+                if (hit) {
+                    wheelWorldPos = rayOrigin.clone().add(rayDir.clone().multiplyScalar(suspensionDist - CONFIG.wheelRadius));
+                } else {
+                    wheelWorldPos = rayOrigin.clone().add(rayDir.clone().multiplyScalar(CONFIG.rayLength - CONFIG.wheelRadius));
+                }
+
+                const localPos = wheelWorldPos.clone().sub(chassisPos).applyQuaternion(chassisQuat.clone().invert());
+                visualWheel.position.copy(localPos);
+
+                // Rotate wheels
+                if (forward || backward) {
+                    const speed = linVel.x; // Approximate rotation speed from forward velocity
+                    visualWheel.rotation.z -= speed * delta * 0.5;
+                }
             }
-        };
+        });
 
-        // Rescue: Reset velocity, rotation, and lift up
-        const handleRescue = () => {
-            if (!chassis.current) return;
-            const pos = chassis.current.translation();
-            // 1. Kill all velocity
-            chassis.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-            chassis.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
-            // 2. Reset rotation to upright (quaternion identity)
-            chassis.current.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
-            // 3. Lift up
-            chassis.current.setTranslation({ x: pos.x, y: pos.y + 3, z: 0 }, true);
-            // 4. Wake up
-            chassis.current.wakeUp();
-        };
-
-        window.addEventListener("keydown", handleKeyDown);
-        window.addEventListener("keyup", handleKeyUp);
-        return () => {
-            window.removeEventListener("keydown", handleKeyDown);
-            window.removeEventListener("keyup", handleKeyUp);
-        };
-    }, []);
-
-    useFrame((state) => {
-        if (!chassis.current) return;
-
-        // 0. Ground Check via Raycast
-        const chassisPos = chassis.current.translation();
-        const ray = new Ray(
-            { x: chassisPos.x, y: chassisPos.y, z: chassisPos.z },
-            { x: 0, y: -1, z: 0 } // Downward
-        );
-        const hit = world.castRay(ray, 1.5, true); // maxToi = 1.5 units
-        setIsGrounded(hit !== null);
-
-        // 1. Air Control (Tilt) - ALWAYS ACTIVE
-        const tiltStrength = 30;
-        if (controls.leftTilt) {
-            chassis.current.wakeUp();
-            chassis.current.applyTorqueImpulse({ x: 0, y: 0, z: tiltStrength * 0.05 }, true); // Tilt Back
-        }
-        if (controls.rightTilt) {
-            chassis.current.wakeUp();
-            chassis.current.applyTorqueImpulse({ x: 0, y: 0, z: -tiltStrength * 0.05 }, true); // Tilt Fwd
+        // 3. Air Control
+        if (groundedWheels < 2) {
+            if (left) chassis.applyTorqueImpulse({ x: 0, y: 0, z: CONFIG.airControlTorque * delta }, true); // Tilt Back
+            if (right) chassis.applyTorqueImpulse({ x: 0, y: 0, z: -CONFIG.airControlTorque * delta }, true); // Tilt Fwd
         }
 
-        // 2. Camera Follow
-        const cameraOffset = new THREE.Vector3(0, 5, 20); // Side view
-
-        // Smooth Camera
-        const targetPos = new THREE.Vector3(
-            chassisPos.x + cameraOffset.x,
-            chassisPos.y + cameraOffset.y,
-            chassisPos.z + cameraOffset.z
-        );
+        // 4. Camera Follow
+        const cameraOffset = new THREE.Vector3(0, 6, 25);
+        const targetPos = new THREE.Vector3(chassisPos.x, chassisPos.y + 6, chassisPos.z + 25);
+        // Smooth lerp
         state.camera.position.lerp(targetPos, 0.1);
         state.camera.lookAt(chassisPos.x, chassisPos.y, 0);
 
-        // Update Speed Store
-        setSpeed(chassis.current.linvel().x);
+        // 5. Reset if fell off
+        if (chassisPos.y < -20) {
+            chassis.setTranslation({ x: 0, y: 5, z: 0 }, true);
+            chassis.setLinvel({ x: 0, y: 0, z: 0 }, true);
+            chassis.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+        }
     });
 
     return (
         <group>
-            {/* CHASSIS */}
             <RigidBody
-                ref={chassis}
-                position={[-10, 3, 0]}
-                mass={20}
+                ref={chassisRef}
+                position={[-10, 5, 0]}
+                mass={CONFIG.chassisMass}
                 colliders={false}
-                restitution={0}
-                linearDamping={1.5}
-                angularDamping={2.5}
-                enabledTranslations={[true, true, false]} // Allow X/Y but LOCK Z
-                enabledRotations={[false, false, true]}   // Lock X/Y (Roll/Steer), Allow Z (Pitch)
+                enabledTranslations={[true, true, false]} // 2.5D: Lock Z
+                enabledRotations={[false, false, true]}   // 2.5D: Lock X/Y rotation
+                linearDamping={1.0}
+                angularDamping={2.0}
             >
-                <CuboidCollider args={[CHASSIS_HALF_LENGTH, CHASSIS_HALF_HEIGHT, CHASSIS_HALF_WIDTH]} restitution={0} />
+                {/* CHASSIS VISUALS */}
                 <mesh castShadow receiveShadow>
-                    <boxGeometry args={[CHASSIS_HALF_LENGTH * 2, CHASSIS_HALF_HEIGHT * 2, CHASSIS_HALF_WIDTH * 2]} />
-                    <meshStandardMaterial color="orange" />
+                    <boxGeometry args={[CONFIG.length, 0.6, CONFIG.width]} />
+                    <meshStandardMaterial color="#E67E22" />
                 </mesh>
-                {/* Cabin Visual */}
-                <mesh position={[-0.3, CHASSIS_HALF_HEIGHT + 0.25, 0]}>
-                    <boxGeometry args={[1.2, 0.5, CHASSIS_HALF_WIDTH * 2 - 0.2]} />
-                    <meshStandardMaterial color="#cc6600" />
+                <mesh position={[-CONFIG.length / 4, 0.6, 0]} castShadow>
+                    <boxGeometry args={[CONFIG.length / 2.5, 0.8, CONFIG.width]} />
+                    <meshStandardMaterial color="#D35400" />
                 </mesh>
+
+                {/* COLLIDERS (Simple Box for Chassis) */}
+                <CuboidCollider args={[CONFIG.length / 2, 0.3, CONFIG.width / 2]} />
+                {/* Cabin Collider */}
+                <CuboidCollider args={[CONFIG.length / 2.5 / 2, 0.4, CONFIG.width / 2]} position={[-CONFIG.length / 4, 0.6, 0]} />
+
+                {/* VISUAL WHEELS (Children of RigidBody) */}
+                {wheelVisuals.map((ref, i) => (
+                    <group key={i} ref={ref}>
+                        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+                            <cylinderGeometry args={[CONFIG.wheelRadius, CONFIG.wheelRadius, 0.6, 32]} />
+                            <meshStandardMaterial color="#333" />
+                        </mesh>
+                        {/* Rim */}
+                        <mesh rotation={[Math.PI / 2, 0, 0]}>
+                            <cylinderGeometry args={[0.3, 0.3, 0.65, 16]} />
+                            <meshStandardMaterial color="#888" />
+                        </mesh>
+                    </group>
+                ))}
             </RigidBody>
-
-            {/* WHEELS - Positioned at corners of chassis */}
-            {/* Front-Right */}
-            <WheelController chassis={chassis} controls={controls} anchorX={1.2} anchorZ={WHEEL_Z_OFFSET} isGrounded={isGrounded} />
-            {/* Front-Left */}
-            <WheelController chassis={chassis} controls={controls} anchorX={1.2} anchorZ={-WHEEL_Z_OFFSET} isGrounded={isGrounded} />
-            {/* Rear-Right */}
-            <WheelController chassis={chassis} controls={controls} anchorX={-1.2} anchorZ={WHEEL_Z_OFFSET} isGrounded={isGrounded} />
-            {/* Rear-Left */}
-            <WheelController chassis={chassis} controls={controls} anchorX={-1.2} anchorZ={-WHEEL_Z_OFFSET} isGrounded={isGrounded} />
         </group>
-    );
-}
-
-// Sub-component to manage wheel physics and joints
-function WheelController({ chassis, controls, anchorX, anchorZ, isGrounded }: {
-    chassis: RefObject<RapierRigidBody | null>,
-    controls: any,
-    anchorX: number,
-    anchorZ: number,
-    isGrounded: boolean
-}) {
-    const wheel = useRef<RapierRigidBody>(null);
-
-    // Joint: Connect wheel to chassis
-    // Anchor on chassis is relative to chassis center
-    useRevoluteJoint(chassis as any, wheel, [
-        [anchorX, -0.5, anchorZ], // Anchor on Chassis (Local to chassis center)
-        [0, 0, 0],                // Anchor on Wheel (Center)
-        [0, 0, 1]                 // Axis Z (wheel rotates around Z-axis)
-    ]);
-
-    useFrame(() => {
-        if (!wheel.current) return;
-
-        // Only apply torque if grounded
-        if (isGrounded) {
-            const torque = 0.5; // Power for hill climbing
-            if (controls.forward) {
-                wheel.current.wakeUp();
-                wheel.current.applyTorqueImpulse({ x: 0, y: 0, z: -torque }, true);
-            }
-            if (controls.backward) {
-                wheel.current.wakeUp();
-                wheel.current.applyTorqueImpulse({ x: 0, y: 0, z: torque }, true);
-            }
-        } else {
-            // In air: Apply braking to stop wheel spin
-            const angvel = wheel.current.angvel();
-            wheel.current.setAngvel({ x: angvel.x * 0.95, y: angvel.y * 0.95, z: angvel.z * 0.95 }, true);
-        }
-    });
-
-    return (
-        <RigidBody
-            ref={wheel}
-            position={[-10 + anchorX, 3 - 0.5, anchorZ]} // Initial spawn near expected joint position
-            colliders={false}
-            mass={1}
-            friction={2}
-            restitution={0}
-            linearDamping={0.5}
-            angularDamping={0.5}
-        >
-            <CylinderCollider args={[WHEEL_THICKNESS / 2, WHEEL_RADIUS]} rotation={[Math.PI / 2, 0, 0]} restitution={0} />
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[WHEEL_RADIUS, WHEEL_RADIUS, WHEEL_THICKNESS, 16]} />
-                <meshStandardMaterial color="#333" />
-            </mesh>
-        </RigidBody>
     );
 }
