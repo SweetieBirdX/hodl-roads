@@ -3,16 +3,22 @@
 import { useMemo } from "react";
 import * as THREE from "three";
 import { RigidBody } from "@react-three/rapier";
-import { BTC_HISTORY } from "@/data/mockData";
+import { useGameStore } from "@/store/useGameStore";
 
 export default function Road() {
+    // Read current track data from store
+    const trackData = useGameStore((state) => state.currentTrackData);
+
     const { geometry, extrudePath } = useMemo(() => {
+        if (!trackData || trackData.length < 2) {
+            // Fallback or loading state
+            return { geometry: null, extrudePath: null };
+        }
+
         // 1. Map Data to Vector3 Points
-        const points = BTC_HISTORY.map((price, i) => {
-            // X: Distance (Spread out)
-            // Y: Price (Scaled down height)
-            // Z: 0 (2.5D Logic)
-            return new THREE.Vector3(i * 5, (price - 100) * 0.1, 0);
+        // Data format: { x, y, price, date }
+        const points = trackData.map((p) => {
+            return new THREE.Vector3(p.x, p.y, 0);
         });
 
         // 2. Create Smooth Curve
@@ -38,20 +44,19 @@ export default function Road() {
 
         const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
 
-        // Center the geometry so physics align
-        geo.center();
+        // DO NOT Center the geometry. We want x:0 to be World x:0.
+        // geo.center();
 
         return { geometry: geo, extrudePath: curve };
-    }, []);
+    }, [trackData]);
+
+    if (!geometry) return null;
 
     return (
         <group>
             {/* ROAD MESH & PHYSICS */}
-            {/* 
-                We use 'trimesh' to perfectly match the extruded geometry directly.
-                For static terrain, trimesh is fine and precise.
-             */}
-            <RigidBody type="fixed" colliders="trimesh" friction={1} restitution={0.2}>
+            {/* Key ensures Rapier rebuilds collider when data changes (using first date as key) */}
+            <RigidBody key={trackData[0].date} type="fixed" colliders="trimesh" friction={1} restitution={0.2}>
                 <mesh geometry={geometry} receiveShadow castShadow>
                     <meshStandardMaterial
                         color="#2c3e50"
@@ -61,8 +66,6 @@ export default function Road() {
                     />
                 </mesh>
             </RigidBody>
-
-            {/* DECORATIONS: Grid Lines on top? (Optional, maybe later) */}
         </group>
     );
 }
