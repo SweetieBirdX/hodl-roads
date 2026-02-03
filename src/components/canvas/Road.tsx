@@ -4,62 +4,65 @@ import { useMemo } from "react";
 import * as THREE from "three";
 import { RigidBody } from "@react-three/rapier";
 import { BTC_HISTORY } from "@/data/mockData";
-import { normalizeData, createRoadCurve } from "@/utils/math";
 
 export default function Road() {
-    const curve = useMemo(() => {
-        // 1. Normalize price data to a reasonable height (0 to 50 units)
-        const normalizedPrices = normalizeData(BTC_HISTORY, 0, 50);
-        // 2. Create a 3D spline curve
-        return createRoadCurve(normalizedPrices, 5); // 5 units distance between data points
-    }, []);
+    const { geometry, extrudePath } = useMemo(() => {
+        // 1. Map Data to Vector3 Points
+        const points = BTC_HISTORY.map((price, i) => {
+            // X: Distance (Spread out)
+            // Y: Price (Scaled down height)
+            // Z: 0 (2.5D Logic)
+            return new THREE.Vector3(i * 5, (price - 100) * 0.1, 0);
+        });
 
-    const geometry = useMemo(() => {
-        // 3. Define the shape to extrude (the road profile)
-        // A flat ribbon approx 6 units wide
+        // 2. Create Smooth Curve
+        const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5);
+
+        // 3. Define Road Shape (Cross-section)
         const shape = new THREE.Shape();
-        shape.moveTo(0, -0.5);
-        shape.lineTo(0, 0.5); // Thickness
-        shape.lineTo(6, 0.5); // Width
-        shape.lineTo(6, -0.5);
-        shape.lineTo(0, -0.5);
+        const width = 6;
+        const thickness = 1;
 
-        // 4. Extrude options
+        shape.moveTo(-width / 2, -thickness);
+        shape.lineTo(-width / 2, 0);
+        shape.lineTo(width / 2, 0);
+        shape.lineTo(width / 2, -thickness);
+        shape.lineTo(-width / 2, -thickness);
+
+        // 4. Extrude Geometry
         const extrudeSettings = {
-            steps: 200, // Resolution of the curve
+            steps: points.length * 10, // High resolution
             bevelEnabled: false,
             extrudePath: curve,
         };
 
-        return new THREE.ExtrudeGeometry(shape, extrudeSettings);
-    }, [curve]);
+        const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+
+        // Center the geometry so physics align
+        geo.center();
+
+        return { geometry: geo, extrudePath: curve };
+    }, []);
 
     return (
         <group>
+            {/* ROAD MESH & PHYSICS */}
             {/* 
-        Physics Body: Type "fixed" because the road doesn't move.
-        Colliders: "trimesh" for exact geometry matching.
-      */}
-            <RigidBody type="fixed" colliders="trimesh">
+                We use 'trimesh' to perfectly match the extruded geometry directly.
+                For static terrain, trimesh is fine and precise.
+             */}
+            <RigidBody type="fixed" colliders="trimesh" friction={1} restitution={0.2}>
                 <mesh geometry={geometry} receiveShadow castShadow>
                     <meshStandardMaterial
-                        color="#8800ff"
-                        emissive="#330066"
-                        emissiveIntensity={0.5}
-                        roughness={0.4}
-                        metalness={0.6}
+                        color="#2c3e50"
+                        roughness={0.8}
+                        metalness={0.2}
                         side={THREE.DoubleSide}
                     />
                 </mesh>
             </RigidBody>
 
-            {/* Launchpad (Safety Start Zone) */}
-            <RigidBody type="fixed" friction={2}>
-                <mesh position={[-10, -1, 0]} receiveShadow>
-                    <boxGeometry args={[20, 1, 10]} />
-                    <meshStandardMaterial color="#444" />
-                </mesh>
-            </RigidBody>
+            {/* DECORATIONS: Grid Lines on top? (Optional, maybe later) */}
         </group>
     );
 }
