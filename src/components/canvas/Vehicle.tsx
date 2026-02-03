@@ -21,7 +21,7 @@ const CONFIG = {
     rayLength: 1.5,        // Max ray distance (RestLength + Travel)
     wheelRadius: 0.5,
     // Drive
-    engineForce: 200,     // Drastically reduced for slow speed
+    engineForce: 100,      // Reduced to 100 as requested (Slower acceleration)
     brakingForce: 50,      // Reduced braking too
     sideFriction: 200,     // Grip to prevent sliding
     maxSteer: 0,           // 2.5D game, no steering needed
