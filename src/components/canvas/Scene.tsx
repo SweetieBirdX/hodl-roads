@@ -1,8 +1,10 @@
 "use client";
 
+import { useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Physics } from "@react-three/rapier";
 import { KeyboardControls, Environment } from "@react-three/drei";
+import { useGameStore } from "@/store/useGameStore";
 import Vehicle from "./Vehicle";
 import Road from "./Road";
 
@@ -16,6 +18,17 @@ const keyboardMap = [
 ];
 
 export default function Scene() {
+    const trackData = useGameStore((state) => state.currentTrackData);
+
+    // Calculate Spawn Position dynamically
+    const startPos = useMemo(() => {
+        if (!trackData || trackData.length === 0) return [0, 5, 0] as [number, number, number];
+        // SAFETY OFFSET: Start at index 6 (approx 30 units in) to avoid edge glitches
+        const safeIndex = Math.min(6, trackData.length - 1);
+        const spawnPoint = trackData[safeIndex];
+        return [spawnPoint.x, spawnPoint.y + 5, 0] as [number, number, number]; // Drop from 5 units high
+    }, [trackData]);
+
     return (
         <KeyboardControls map={keyboardMap}>
             <Canvas
@@ -34,7 +47,9 @@ export default function Scene() {
                 />
                 <Environment preset="city" />
 
-                <Physics gravity={[0, -9.81, 0]} timeStep="vary">
+                {/* Physics World */}
+                {/* User requested gravity -15, keeping it consistent with request */}
+                <Physics gravity={[0, -15, 0]} timeStep="vary">
                     <group position={[0, -2, 0]}>
                         {/* 
                            Shift entire world slightly if needed, 
@@ -43,13 +58,14 @@ export default function Scene() {
                         <Road />
 
                         {/* Vehicle Spawn:
-                            Road starts at X=0. 
-                            Let's spawn vehicle slightly above the first point.
-                            Mock Data start: Price 100 -> (100-100)*0.1 = Y=0.
+                            Spawn exactly at start of road data
                         */}
-                        <group position={[0, 5, 0]}>
-                            <Vehicle />
-                        </group>
+                        {trackData && (
+                            <group position={[0, 0, 0]}>
+                                {/* Key ensures vehicle resets when track changes */}
+                                <Vehicle key={trackData[0].date} position={startPos} />
+                            </group>
+                        )}
                     </group>
                 </Physics>
             </Canvas>

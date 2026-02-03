@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import { RigidBody, RapierRigidBody, useRapier, CuboidCollider } from "@react-three/rapier";
 import { Ray } from "@dimforge/rapier3d-compat";
@@ -38,7 +38,11 @@ const WHEEL_OFFSETS = [
     { x: -CONFIG.length / 2 + 0.6, z: CONFIG.width / 2 - 0.4 }, // Rear Right
 ];
 
-export default function Vehicle() {
+interface VehicleProps {
+    position?: [number, number, number];
+}
+
+export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
     const chassisRef = useRef<RapierRigidBody>(null);
     const { world } = useRapier();
     const [, get] = useKeyboardControls();
@@ -50,6 +54,29 @@ export default function Vehicle() {
     const rlWheel = useRef<THREE.Group>(null);
     const rrWheel = useRef<THREE.Group>(null);
     const wheelVisuals = [flWheel, frWheel, rlWheel, rrWheel];
+
+    // Force Reset Physics when Level Changes (Teleporter Fix)
+    // Effectively handled by useEffect below
+
+    // NOTE: We used `useEffect` in the tool plan.
+    // Let's implement it.
+
+    // We need useEffect to run when `position` changes.
+    // But `position` is an array [x,y,z], referential equality might fail if parent passes new array.
+    // In Scene.tsx, startPos is useMemo'd, so it's stable if trackData is stable.
+
+    // Physics Reset Logic
+
+    // We already imported useEffect at top level
+
+    useEffect(() => {
+        if (chassisRef.current) {
+            const [x, y, z] = position;
+            chassisRef.current.setTranslation({ x, y, z }, true);
+            chassisRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+            chassisRef.current.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        }
+    }, [position]);
 
     useFrame((state, delta) => {
         if (!chassisRef.current) return;
@@ -179,10 +206,12 @@ export default function Vehicle() {
         setSpeed(linVel.x);
 
         // 5. Reset if fell off
-        if (chassisPos.y < -20) {
-            chassis.setTranslation({ x: 0, y: 5, z: 0 }, true);
+        if (chassisPos.y < -30) {
+            // Reset to initial spawn position
+            chassis.setTranslation({ x: position[0], y: position[1], z: position[2] }, true);
             chassis.setLinvel({ x: 0, y: 0, z: 0 }, true);
             chassis.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+            chassis.setAngvel({ x: 0, y: 0, z: 0 }, true);
         }
     }); // End useFrame
 
@@ -190,7 +219,7 @@ export default function Vehicle() {
         <group>
             <RigidBody
                 ref={chassisRef}
-                position={[-10, 5, 0]}
+                position={position}
                 mass={CONFIG.chassisMass}
                 colliders={false}
                 enabledTranslations={[true, true, false]} // 2.5D: Lock Z
