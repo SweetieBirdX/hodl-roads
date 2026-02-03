@@ -18,7 +18,12 @@ const keyboardMap = [
 export default function Scene() {
     return (
         <KeyboardControls map={keyboardMap}>
-            <Canvas shadows camera={{ position: [0, 5, 20], fov: 50 }}>
+            <Canvas
+                shadows
+                dpr={[1, 2]}
+                gl={{ antialias: true, stencil: false, depth: true }}
+                camera={{ position: [0, 5, 20], fov: 50 }}
+            >
                 {/* Lighting & Env */}
                 <ambientLight intensity={0.5} />
                 <directionalLight
@@ -29,7 +34,7 @@ export default function Scene() {
                 />
                 <Environment preset="city" />
 
-                <Physics gravity={[0, -9.81, 0]}>
+                <Physics gravity={[0, -9.81, 0]} timeStep="vary">
                     <group position={[0, -2, 0]}>
                         {/* 
                            Shift entire world slightly if needed, 

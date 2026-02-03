@@ -6,6 +6,7 @@ import { RigidBody, RapierRigidBody, useRapier, CuboidCollider } from "@react-th
 import { Ray } from "@dimforge/rapier3d-compat";
 import * as THREE from "three";
 import { useKeyboardControls } from "@react-three/drei";
+import { useGameStore } from "@/store/useGameStore";
 
 // --- VEHICLE CONFIGURATION ---
 const CONFIG = {
@@ -41,6 +42,7 @@ export default function Vehicle() {
     const chassisRef = useRef<RapierRigidBody>(null);
     const { world } = useRapier();
     const [, get] = useKeyboardControls();
+    const setSpeed = useGameStore((state) => state.setSpeed);
 
     // Visual Wheel Refs
     const flWheel = useRef<THREE.Group>(null);
@@ -162,12 +164,19 @@ export default function Vehicle() {
         if (left) chassis.applyTorqueImpulse({ x: 0, y: 0, z: CONFIG.airControlTorque * delta }, true); // Tilt Back
         if (right) chassis.applyTorqueImpulse({ x: 0, y: 0, z: -CONFIG.airControlTorque * delta }, true); // Tilt Fwd
 
-        // 4. Camera Follow
-        const cameraOffset = new THREE.Vector3(0, 6, 25);
-        const targetPos = new THREE.Vector3(chassisPos.x, chassisPos.y + 6, chassisPos.z + 25);
-        // Smooth lerp
-        state.camera.position.lerp(targetPos, 0.1);
+        // 4. Camera Follow (LATE UPDATE)
+        const targetPos = new THREE.Vector3(
+            chassisPos.x + linVel.x * 0.05, // Slight lookahead on X
+            chassisPos.y + 5 + (linVel.y * 0.05), // Lookahead on Y
+            chassisPos.z + 20
+        );
+
+        // Stiffer Lerp (0.25) to reduce "Ghosting/Lag" at high speeds
+        state.camera.position.lerp(targetPos, 0.25);
         state.camera.lookAt(chassisPos.x, chassisPos.y, 0);
+
+        // Update Speed Store
+        setSpeed(linVel.x);
 
         // 5. Reset if fell off
         if (chassisPos.y < -20) {
@@ -175,7 +184,7 @@ export default function Vehicle() {
             chassis.setLinvel({ x: 0, y: 0, z: 0 }, true);
             chassis.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
         }
-    });
+    }); // End useFrame
 
     return (
         <group>
