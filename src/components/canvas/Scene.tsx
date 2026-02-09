@@ -15,6 +15,7 @@ const keyboardMap = [
     { name: "left", keys: ["KeyA", "ArrowLeft"] },
     { name: "right", keys: ["KeyD", "ArrowRight"] },
     { name: "reset", keys: ["KeyR"] },
+    { name: "turbo", keys: ["ShiftLeft", "ShiftRight"] },
 ];
 
 export default function Scene() {
