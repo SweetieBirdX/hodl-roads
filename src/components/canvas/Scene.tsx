@@ -19,6 +19,10 @@ const keyboardMap = [
 
 export default function Scene() {
     const trackData = useGameStore((state) => state.currentTrackData);
+    const gamePhase = useGameStore((state) => state.gamePhase);
+
+    // Pause physics when game is paused
+    const isPaused = gamePhase === 'PAUSED';
 
     // Calculate Spawn Position dynamically
     const startPos = useMemo(() => {
@@ -47,9 +51,8 @@ export default function Scene() {
                 />
                 <Environment preset="city" />
 
-                {/* Physics World */}
-                {/* User requested gravity -15, keeping it consistent with request */}
-                <Physics gravity={[0, -15, 0]} timeStep="vary">
+                {/* Physics World - paused prop freezes simulation */}
+                <Physics gravity={[0, -15, 0]} timeStep="vary" paused={isPaused}>
                     <group position={[0, -2, 0]}>
                         {/* 
                            Shift entire world slightly if needed, 
