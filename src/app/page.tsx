@@ -39,7 +39,7 @@ export default function Home() {
             onClick={pauseGame}
             className="absolute top-4 right-4 z-10 px-4 py-2 bg-gray-800/80 text-white rounded-lg font-bold hover:bg-gray-700 transition-colors border border-gray-600"
           >
-            ⏸ Pause
+            Pause
           </button>
         </>
       )}

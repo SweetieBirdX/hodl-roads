@@ -1,20 +1,33 @@
 import { create } from 'zustand';
-import CRYPTO_HISTORY from '@/data/cryptoHistory.json';
 
-type TrackKey = keyof typeof CRYPTO_HISTORY;
+// Import individual coin history files
+import BTC_HISTORY from '@/data/btc_history.json';
+import ETH_HISTORY from '@/data/eth_history.json';
+import SOL_HISTORY from '@/data/solana_history.json';
+import DOGE_HISTORY from '@/data/doge_history.json';
+import PEPE_HISTORY from '@/data/pepe_history.json';
+
+// Coin data mapping
+export const COIN_DATA: Record<string, typeof BTC_HISTORY> = {
+    BTC: BTC_HISTORY,
+    ETH: ETH_HISTORY,
+    SOL: SOL_HISTORY,
+    DOGE: DOGE_HISTORY,
+    PEPE: PEPE_HISTORY,
+};
+
+// Available coins
+export const AVAILABLE_COINS = Object.keys(COIN_DATA);
 
 interface GameState {
     // Game Phase
     gamePhase: 'MENU' | 'PLAYING' | 'PAUSED' | 'GAME_OVER';
 
-    // Menu Selection
+    // Menu Selection (Coin only, no year range)
     selectedCoin: string;
-    selectedYearStart: number;
-    selectedYearEnd: number;
 
-    // Track State (Legacy - will be updated when Road changes)
-    selectedTrackKey: TrackKey;
-    currentTrackData: typeof CRYPTO_HISTORY[TrackKey];
+    // Track State
+    currentTrackData: typeof BTC_HISTORY;
 
     // Physics State
     speed: number;
@@ -26,14 +39,13 @@ interface GameState {
     currentPortfolio: number;
 
     // Actions
-    setSelection: (coin: string, yearStart: number, yearEnd: number) => void;
+    selectCoin: (coin: string) => void;
     startGame: () => void;
     pauseGame: () => void;
     resumeGame: () => void;
     backToMenu: () => void;
     restartGame: () => void;
     setSpeed: (speed: number) => void;
-    setTrack: (key: string) => void;
     setGameOver: (isGameOver: boolean) => void;
     triggerGameOver: (reason: 'LIQUIDATED' | 'CRASHED') => void;
 }
@@ -43,12 +55,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // Default Selection
     selectedCoin: 'BTC',
-    selectedYearStart: 2021,
-    selectedYearEnd: 2022,
 
-    // Legacy track state
-    selectedTrackKey: 'BTC_2021',
-    currentTrackData: CRYPTO_HISTORY['BTC_2021'],
+    // Track data - starts with BTC
+    currentTrackData: BTC_HISTORY,
 
     speed: 0,
     distance: 0,
@@ -57,11 +66,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     initialPortfolio: 10000,
     currentPortfolio: 10000,
 
-    setSelection: (coin, yearStart, yearEnd) => set({
-        selectedCoin: coin,
-        selectedYearStart: yearStart,
-        selectedYearEnd: yearEnd
-    }),
+    selectCoin: (coin) => {
+        const data = COIN_DATA[coin];
+        if (data) {
+            set({
+                selectedCoin: coin,
+                currentTrackData: data,
+            });
+        }
+    },
 
     startGame: () => set({
         gamePhase: 'PLAYING',
@@ -88,18 +101,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     }),
 
     setSpeed: (speed) => set({ speed }),
-
-    setTrack: (key) => {
-        if (Object.keys(CRYPTO_HISTORY).includes(key)) {
-            const trackKey = key as TrackKey;
-            set({
-                selectedTrackKey: trackKey,
-                currentTrackData: CRYPTO_HISTORY[trackKey],
-                speed: 0,
-                distance: 0
-            });
-        }
-    },
 
     setGameOver: (isGameOver) => {
         if (isGameOver) set({ gamePhase: 'GAME_OVER' });
