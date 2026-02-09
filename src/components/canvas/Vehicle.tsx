@@ -47,6 +47,30 @@ export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
     const { world } = useRapier();
     const [, get] = useKeyboardControls();
     const setSpeed = useGameStore((state) => state.setSpeed);
+    const trackData = useGameStore((state) => state.currentTrackData);
+
+    // Helper: Find road Y at given X position
+    const getRoadYAtX = (x: number): number => {
+        if (!trackData || trackData.length === 0) return 0;
+
+        // Find the two closest points (before and after x)
+        let before = trackData[0];
+        let after = trackData[trackData.length - 1];
+
+        for (let i = 0; i < trackData.length - 1; i++) {
+            if (trackData[i].x <= x && trackData[i + 1].x >= x) {
+                before = trackData[i];
+                after = trackData[i + 1];
+                break;
+            }
+        }
+
+        // Linear interpolation between points
+        const t = (after.x - before.x) !== 0
+            ? (x - before.x) / (after.x - before.x)
+            : 0;
+        return before.y + t * (after.y - before.y);
+    };
 
     // Visual Wheel Refs
     const flWheel = useRef<THREE.Group>(null);
@@ -81,7 +105,21 @@ export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
     useFrame((state, delta) => {
         if (!chassisRef.current) return;
         const chassis = chassisRef.current;
-        const { forward, backward, left, right } = get();
+        const { forward, backward, left, right, reset } = get();
+
+        // R KEY RESET: Place car 1 unit above the road at current X position
+        if (reset) {
+            const currentPos = chassis.translation();
+            const roadY = getRoadYAtX(currentPos.x);
+            // Teleport to road height + 10 (accounting for world offset of -2)
+            chassis.setTranslation({ x: currentPos.x, y: roadY + 10 - 2, z: 0 }, true);
+            // Zero out velocity
+            chassis.setLinvel({ x: 0, y: 0, z: 0 }, true);
+            chassis.setAngvel({ x: 0, y: 0, z: 0 }, true);
+            // Reset rotation to upright (no roll/pitch)
+            chassis.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+            return; // Skip rest of frame
+        }
 
         // 1. Get Chassis State
         const transform = chassis.translation();
