@@ -33,6 +33,10 @@ interface GameState {
     speed: number;
     distance: number;
 
+    // Turbo State
+    turboFuel: number;       // 0-100, percentage
+    isTurboActive: boolean;
+
     // Economic State
     currentPrice: number;
     initialPortfolio: number;
@@ -46,6 +50,8 @@ interface GameState {
     backToMenu: () => void;
     restartGame: () => void;
     setSpeed: (speed: number) => void;
+    setTurboFuel: (fuel: number) => void;
+    setTurboActive: (active: boolean) => void;
     setGameOver: (isGameOver: boolean) => void;
     triggerGameOver: (reason: 'LIQUIDATED' | 'CRASHED') => void;
 }
@@ -61,6 +67,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     speed: 0,
     distance: 0,
+
+    turboFuel: 100,
+    isTurboActive: false,
 
     currentPrice: 0,
     initialPortfolio: 10000,
@@ -92,15 +101,19 @@ export const useGameStore = create<GameState>((set, get) => ({
         distance: 0
     }),
 
-    restartGame: () => set({
-        gamePhase: 'MENU',
+    restartGame: () => set((state) => ({
+        gamePhase: 'PLAYING',
         speed: 0,
         distance: 0,
         initialPortfolio: 10000,
-        currentPortfolio: 10000
-    }),
+        currentPortfolio: 10000,
+        // Force re-render of Vehicle by updating currentTrackData reference
+        currentTrackData: [...state.currentTrackData],
+    })),
 
     setSpeed: (speed) => set({ speed }),
+    setTurboFuel: (fuel) => set({ turboFuel: Math.max(0, Math.min(100, fuel)) }),
+    setTurboActive: (active) => set({ isTurboActive: active }),
 
     setGameOver: (isGameOver) => {
         if (isGameOver) set({ gamePhase: 'GAME_OVER' });
