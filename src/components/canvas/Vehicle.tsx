@@ -23,7 +23,7 @@ const CONFIG = {
     wheelRadius: 0.5,
     // Drive
     engineForce: 100,      // Reduced to 100 as requested (Slower acceleration)
-    brakingForce: 50,      // Reduced braking too
+    brakingForce: 20,      // Smooth braking (reduced from 50)
     sideFriction: 200,     // Grip to prevent sliding
     maxSteer: 0,           // 2.5D game, no steering needed
     // Air Control
@@ -48,6 +48,8 @@ export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
     const [, get] = useKeyboardControls();
     const setSpeed = useGameStore((state) => state.setSpeed);
     const trackData = useGameStore((state) => state.currentTrackData);
+    const setTurboFuel = useGameStore((state) => state.setTurboFuel);
+    const setTurboActive = useGameStore((state) => state.setTurboActive);
 
     // Helper: Find road Y at given X position
     const getRoadYAtX = (x: number): number => {
@@ -102,10 +104,13 @@ export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
         }
     }, [position]);
 
-    useFrame((state, delta) => {
+    useFrame((state, rawDelta) => {
+        // Cap delta to prevent physics jumps after tab switch (max ~20 FPS worth)
+        const delta = Math.min(rawDelta, 0.05);
+
         if (!chassisRef.current) return;
         const chassis = chassisRef.current;
-        const { forward, backward, left, right, reset } = get();
+        const { forward, backward, left, right, reset, turbo } = get();
 
         // R KEY RESET: Place car 1 unit above the road at current X position
         if (reset) {
@@ -186,10 +191,10 @@ export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
                 const sideImpulse = rightDir.clone().multiplyScalar(-sideSpeed * CONFIG.sideFriction * delta);
                 chassis.applyImpulseAtPoint({ x: sideImpulse.x, y: sideImpulse.y, z: sideImpulse.z }, { x: wheelAttachPos.x, y: wheelAttachPos.y, z: wheelAttachPos.z }, true);
 
-                // C. Drive Force (Acceleration)
+                // C. Drive Force (Acceleration) - normal engine only
                 let drive = 0;
                 if (forward) drive = CONFIG.engineForce;
-                if (backward) drive = -CONFIG.engineForce; // Simple reverse
+                if (backward) drive = -CONFIG.engineForce;
 
                 if (drive !== 0) {
                     const driveImpulse = forwardDir.clone().multiplyScalar(drive * delta);
@@ -218,16 +223,36 @@ export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
                 visualWheel.position.copy(localPos);
 
                 // Rotate wheels
-                if (forward || backward) {
-                    const speed = linVel.x; // Approximate rotation speed from forward velocity
-                    visualWheel.rotation.z -= speed * delta * 0.5;
-                }
+                // Rotate wheels based on vehicle speed (not key press)
+                const speed = linVel.x;
+                visualWheel.rotation.z -= speed * delta * 0.5;
             }
         });
 
         // 3. Rotation Control (Air & Ground)
         if (left) chassis.applyTorqueImpulse({ x: 0, y: 0, z: CONFIG.airControlTorque * delta }, true); // Tilt Back
         if (right) chassis.applyTorqueImpulse({ x: 0, y: 0, z: -CONFIG.airControlTorque * delta }, true); // Tilt Fwd
+
+        // 4. Turbo Rocket Boost (works in air too!)
+        const currentFuel = useGameStore.getState().turboFuel;
+        const isTurboOn = turbo && currentFuel > 0;
+
+        if (isTurboOn) {
+            // Apply rocket impulse directly to chassis center (forward direction)
+            const rocketForce = 250;
+            const rocketImpulse = forwardDir.clone().multiplyScalar(rocketForce * delta);
+            chassis.applyImpulse({ x: rocketImpulse.x, y: rocketImpulse.y, z: 0 }, true);
+
+            // Drain: 100% / 4 seconds = 25% per second
+            setTurboFuel(currentFuel - (25 * delta));
+            setTurboActive(true);
+        } else {
+            // Recharge: 100% / 12 seconds ≈ 8.33% per second
+            if (currentFuel < 100) {
+                setTurboFuel(currentFuel + (8.33 * delta));
+            }
+            setTurboActive(false);
+        }
 
         // 4. Camera Follow (LATE UPDATE)
         const targetPos = new THREE.Vector3(
@@ -283,15 +308,27 @@ export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
                 {/* VISUAL WHEELS (Children of RigidBody) */}
                 {wheelVisuals.map((ref, i) => (
                     <group key={i} ref={ref}>
+                        {/* Tire */}
                         <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
                             <cylinderGeometry args={[CONFIG.wheelRadius, CONFIG.wheelRadius, 0.6, 32]} />
-                            <meshStandardMaterial color="#333" />
+                            <meshStandardMaterial color="#222" />
                         </mesh>
                         {/* Rim */}
                         <mesh rotation={[Math.PI / 2, 0, 0]}>
-                            <cylinderGeometry args={[0.3, 0.3, 0.65, 16]} />
-                            <meshStandardMaterial color="#888" />
+                            <cylinderGeometry args={[0.25, 0.25, 0.65, 16]} />
+                            <meshStandardMaterial color="#666" />
                         </mesh>
+                        {/* White Spokes (4 stripes) */}
+                        {[0, 1, 2, 3].map((spoke) => (
+                            <mesh
+                                key={spoke}
+                                rotation={[Math.PI / 2, 0, (spoke * Math.PI) / 2]}
+                                position={[0, 0, 0]}
+                            >
+                                <boxGeometry args={[0.08, 0.62, CONFIG.wheelRadius * 1.8]} />
+                                <meshStandardMaterial color="white" />
+                            </mesh>
+                        ))}
                     </group>
                 ))}
             </RigidBody>
