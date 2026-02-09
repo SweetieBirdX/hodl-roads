@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Physics } from "@react-three/rapier";
 import { KeyboardControls, Environment } from "@react-three/drei";
@@ -21,8 +21,23 @@ export default function Scene() {
     const trackData = useGameStore((state) => state.currentTrackData);
     const gamePhase = useGameStore((state) => state.gamePhase);
 
-    // Pause physics when game is paused
-    const isPaused = gamePhase === 'PAUSED';
+    // Track if tab is visible
+    const [isTabVisible, setIsTabVisible] = useState(true);
+
+    // Listen for visibility changes (tab switching)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            setIsTabVisible(!document.hidden);
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []);
+
+    // Pause physics when game is paused OR tab is not visible
+    const isPaused = gamePhase === 'PAUSED' || !isTabVisible;
 
     // Calculate Spawn Position dynamically
     const startPos = useMemo(() => {
