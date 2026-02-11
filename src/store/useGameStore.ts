@@ -109,6 +109,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         currentPortfolio: 10000,
         // Force re-render of Vehicle by updating currentTrackData reference
         currentTrackData: [...state.currentTrackData],
+        turboFuel: 100,
     })),
 
     setSpeed: (speed) => set({ speed }),
