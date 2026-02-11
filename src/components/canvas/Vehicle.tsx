@@ -239,7 +239,8 @@ export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
 
         if (isTurboOn) {
             // Apply rocket impulse directly to chassis center (forward direction)
-            const rocketForce = 250;
+            // Allow debugging via console: window.turboPower = 5000
+            const rocketForce = (window as any).turboPower || 500;
             const rocketImpulse = forwardDir.clone().multiplyScalar(rocketForce * delta);
             chassis.applyImpulse({ x: rocketImpulse.x, y: rocketImpulse.y, z: 0 }, true);
 
@@ -248,7 +249,8 @@ export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
             setTurboActive(true);
         } else {
             // Recharge: 100% / 12 seconds ≈ 8.33% per second
-            if (currentFuel < 100) {
+            // ONLY if at least one wheel is touching the ground
+            if (currentFuel < 100 && groundedWheels > 0) {
                 setTurboFuel(currentFuel + (8.33 * delta));
             }
             setTurboActive(false);
