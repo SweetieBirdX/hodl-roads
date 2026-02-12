@@ -7,6 +7,7 @@ import { KeyboardControls, Environment } from "@react-three/drei";
 import { useGameStore } from "@/store/useGameStore";
 import Vehicle from "./Vehicle";
 import Road from "./Road";
+import DynamicBackground from "./DynamicBackground";
 
 // Keyboard control mappings
 const keyboardMap = [
@@ -55,7 +56,7 @@ export default function Scene() {
                 shadows
                 dpr={[1, 2]}
                 gl={{ antialias: true, stencil: false, depth: true }}
-                camera={{ position: [0, 5, 20], fov: 50 }}
+                camera={{ position: [0, 5, 20], fov: 50, far: 4000 }}
             >
                 {/* Lighting & Env */}
                 <ambientLight intensity={0.5} />
@@ -65,7 +66,10 @@ export default function Scene() {
                     castShadow
                     shadow-mapSize={[2048, 2048]}
                 />
-                <Environment preset="city" />
+
+                {/* Background */}
+                <DynamicBackground />
+                <Environment preset="city" background={false} />
 
                 {/* Physics World - paused prop freezes simulation */}
                 <Physics gravity={[0, -15, 0]} timeStep="vary" paused={isPaused}>
