@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
-import { Canvas } from "@react-three/fiber";
+import { useMemo, useEffect, useState, useRef } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import * as THREE from "three";
 import { Physics } from "@react-three/rapier";
 import { KeyboardControls, Environment } from "@react-three/drei";
 import { useGameStore } from "@/store/useGameStore";
@@ -18,6 +19,40 @@ const keyboardMap = [
     { name: "reset", keys: ["KeyR"] },
     { name: "turbo", keys: ["ShiftLeft", "ShiftRight"] },
 ];
+
+function Lights() {
+    const lightRef = useRef<THREE.DirectionalLight>(null);
+    const lightTarget = useRef<THREE.Object3D>(new THREE.Object3D());
+
+    useFrame((state) => {
+        if (lightRef.current) {
+            const offset = new THREE.Vector3(10, 20, 10);
+            const targetPos = state.camera.position.clone();
+            lightRef.current.position.copy(targetPos).add(offset);
+            lightRef.current.target.position.copy(targetPos);
+            lightRef.current.target.updateMatrixWorld();
+        }
+    });
+
+    return (
+        <>
+            <ambientLight intensity={0.5} />
+            <directionalLight
+                ref={lightRef}
+                position={[10, 20, 10]}
+                intensity={1.5}
+                castShadow
+                shadow-mapSize={[2048, 2048]}
+                shadow-camera-left={-50}
+                shadow-camera-right={50}
+                shadow-camera-top={50}
+                shadow-camera-bottom={-50}
+                target={lightTarget.current}
+            />
+            <primitive object={lightTarget.current} />
+        </>
+    );
+}
 
 export default function Scene() {
     const trackData = useGameStore((state) => state.currentTrackData);
@@ -58,14 +93,7 @@ export default function Scene() {
                 gl={{ antialias: true, stencil: false, depth: true }}
                 camera={{ position: [0, 5, 20], fov: 50, far: 4000 }}
             >
-                {/* Lighting & Env */}
-                <ambientLight intensity={0.5} />
-                <directionalLight
-                    position={[10, 20, 10]}
-                    intensity={1.5}
-                    castShadow
-                    shadow-mapSize={[2048, 2048]}
-                />
+                <Lights />
 
                 {/* Background */}
                 <DynamicBackground />
@@ -91,7 +119,7 @@ export default function Scene() {
                         )}
                     </group>
                 </Physics>
-            </Canvas>
-        </KeyboardControls>
+            </Canvas >
+        </KeyboardControls >
     );
 }
