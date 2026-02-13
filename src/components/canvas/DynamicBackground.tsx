@@ -21,7 +21,8 @@ uniform vec3 colorSkyZenith;
 uniform vec3 colorGroundHorizon;
 uniform vec3 colorGroundDeep;
 uniform float horizonY;
-uniform float rangeY; // Range over which color transitions
+uniform float rangeSky;
+uniform float rangeGround;
 
 // Simple pseudo-random function
 float random(vec2 st) {
@@ -34,7 +35,7 @@ void main() {
 
     if (y >= 0.0) {
         // Sky: Mix from horizon to zenith
-        float t = smoothstep(0.0, rangeY, y);
+        float t = smoothstep(0.0, rangeSky, y);
         
         // Atmosphere Glow: Add a subtle additive glow near horizon
         float atmosphere = exp(-y * 0.02) * 0.2; // Decay as we go up
@@ -65,12 +66,13 @@ void main() {
 
     } else {
         // Ground: Mix from horizon to deep
-        float t = smoothstep(0.0, rangeY, -y);
+        float t = smoothstep(0.0, rangeGround, -y);
         
         // Fog/Haze near horizon for ground too
         float haze = exp(y * 0.05) * 0.1;
 
-        t = t * t;
+        // Use linear mixing for ground to avoid "staying light then suddenly dark"
+        // t = t; 
         color = mix(colorGroundHorizon, colorGroundDeep, t);
         
         // Mix haze
@@ -90,16 +92,22 @@ export default function DynamicBackground() {
             colorSkyZenith: { value: new THREE.Color("#00005C") },  // Deep Blue
             colorGroundHorizon: { value: new THREE.Color("#7ED321") }, // Vibrant Green
             colorGroundDeep: { value: new THREE.Color("#004D00") },    // Deep Green
-            horizonY: { value: 0.0 },
-            rangeY: { value: 1000.0 },
+            horizonY: { value: -500.0 }, // Horizon is much lower (Y=-500)
+            rangeSky: { value: 1000.0 },
+            rangeGround: { value: 4000.0 }, // Much smoother ground transition
         }),
         []
     );
 
     useFrame((state) => {
         if (meshRef.current) {
-            // Keep background centered on camera so it feels infinite
-            meshRef.current.position.copy(state.camera.position);
+            // Keep background centered on camera X/Z for infinite scrolling
+            // BUT lock Y so the player moves "up and down" inside the sphere (parallax)
+            meshRef.current.position.set(
+                state.camera.position.x,
+                0, // Fixed Y
+                state.camera.position.z
+            );
         }
     });
 
