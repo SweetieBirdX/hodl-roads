@@ -2,7 +2,7 @@
 
 import { useRef, useState, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
-import { RigidBody, RapierRigidBody, useRapier, CuboidCollider } from "@react-three/rapier";
+import { RigidBody, RapierRigidBody, useRapier, CuboidCollider, CylinderCollider } from "@react-three/rapier";
 import { Ray } from "@dimforge/rapier3d-compat";
 import * as THREE from "three";
 import { useKeyboardControls } from "@react-three/drei";
@@ -306,6 +306,16 @@ export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
                 <CuboidCollider args={[CONFIG.length / 2, 0.3, CONFIG.width / 2]} />
                 {/* Cabin Collider */}
                 <CuboidCollider args={[CONFIG.length / 2.5 / 2, 0.4, CONFIG.width / 2]} position={[-CONFIG.length / 4, 0.6, 0]} />
+
+                {/* WHEEL COLLIDERS (Prevent clipping when upside down) */}
+                {WHEEL_OFFSETS.map((offset, i) => (
+                    <CylinderCollider
+                        key={`collider-${i}`}
+                        position={[offset.x, 0, offset.z]} // Positioned at chassis center height to avoid ground drag
+                        rotation={[Math.PI / 2, 0, 0]} // Rotate to align with Z axis (Axle)
+                        args={[0.3, 0.5]} // [HalfHeight, Radius] -> Width 0.6, Radius 0.5
+                    />
+                ))}
 
                 {/* VISUAL WHEELS (Children of RigidBody) */}
                 {wheelVisuals.map((ref, i) => (
