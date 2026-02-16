@@ -1,82 +1,83 @@
 "use client";
 
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useRef, useMemo } from "react";
 import * as THREE from "three";
 
+// Vertex shader: fullscreen quad in clip space (no projection needed)
 const vertexShader = `
-varying vec3 vWorldPosition;
+varying vec2 vUv;
 
 void main() {
-    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-    vWorldPosition = worldPosition.xyz;
-    gl_Position = projectionMatrix * viewMatrix * worldPosition;
+    vUv = uv;
+    // Place quad directly in clip space — always fills the entire screen
+    gl_Position = vec4(position.xy * 2.0, 0.9999, 1.0);
 }
 `;
 
+// Fragment shader: screen-space gradient + static stars + subtle parallax
 const fragmentShader = `
-varying vec3 vWorldPosition;
-uniform vec3 colorSkyHorizon;
-uniform vec3 colorSkyZenith;
-uniform vec3 colorGroundHorizon;
-uniform vec3 colorGroundDeep;
-uniform float horizonY;
-uniform float rangeSky;
-uniform float rangeGround;
+varying vec2 vUv;
+uniform vec2 resolution;
+uniform float cameraY;
 
-// Simple pseudo-random function
+// Pseudo-random function
 float random(vec2 st) {
-    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+    return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453123);
 }
 
 void main() {
-    float y = vWorldPosition.y - horizonY;
+    // Screen UV with subtle parallax offset based on camera Y
+    // The parallax factor is very small — like looking at a wall 1m away
+    float parallaxAmount = cameraY * 0.003;
+    vec2 uv = vUv;
+    uv.y += parallaxAmount;
+
+    // === SKY GRADIENT ===
+    // Bottom: deep navy horizon | Top: dark midnight/black
+    vec3 colorHorizon = vec3(0.08, 0.12, 0.25);   // Deep navy blue
+    vec3 colorMid     = vec3(0.03, 0.05, 0.15);    // Midnight blue
+    vec3 colorZenith  = vec3(0.01, 0.01, 0.05);    // Near black
+
     vec3 color;
-
-    if (y >= 0.0) {
-        // Sky: Mix from horizon to zenith
-        float t = smoothstep(0.0, rangeSky, y);
-        
-        // Atmosphere Glow: Add a subtle additive glow near horizon
-        float atmosphere = exp(-y * 0.02) * 0.2; // Decay as we go up
-
-        // Ease In for base color
-        float tColor = t * t; 
-        color = mix(colorSkyHorizon, colorSkyZenith, tColor);
-        
-        // Stars
-        if (y > 200.0) { // Only show stars above 200 units
-            // Map 3D position to 2D for noise (using X/Z)
-            // Scale down to make stars smaller/denser
-            vec2 pos = vWorldPosition.xz * 0.05 + vWorldPosition.xy * 0.01; 
-            float noise = random(floor(pos));
-            
-            // Threshold for stars (0.995 = sparse stars)
-            if (noise > 0.995) {
-                float brightness = (noise - 0.995) / (1.0 - 0.995);
-                // Twinkle based on position/time? For now static.
-                // Fade in stars as we go higher
-                float fade = smoothstep(200.0, 800.0, y);
-                color += vec3(brightness * fade); 
-            }
-        }
-
-        // Add atmosphere glow
-        color += vec3(atmosphere * 0.5, atmosphere * 0.5, atmosphere * 0.7);
-
+    if (uv.y < 0.4) {
+        // Lower portion: horizon to mid
+        float t = smoothstep(0.0, 0.4, uv.y);
+        color = mix(colorHorizon, colorMid, t);
     } else {
-        // Ground: Mix from horizon to deep
-        float t = smoothstep(0.0, rangeGround, -y);
-        
-        // Fog/Haze near horizon for ground too
-        float haze = exp(y * 0.05) * 0.1;
+        // Upper portion: mid to zenith
+        float t = smoothstep(0.4, 1.0, uv.y);
+        color = mix(colorMid, colorZenith, t);
+    }
 
-        // Use linear mixing for ground to avoid "staying light then suddenly dark"
-        // t = t; 
-        color = mix(colorGroundHorizon, colorGroundDeep, t);
-        
-        // Mix haze
-        color = mix(color, colorGroundHorizon, haze);
+    // Subtle atmosphere glow near horizon
+    float atmosphere = exp(-uv.y * 5.0) * 0.15;
+    color += vec3(atmosphere * 0.3, atmosphere * 0.4, atmosphere * 0.8);
+
+    // === STATIC STARS ===
+    // Stars are based on screen pixel position (NOT world position)
+    // so they never move regardless of camera movement
+    vec2 starCoord = floor(gl_FragCoord.xy / 1.5); // Grid cells for stars
+    float starNoise = random(starCoord);
+
+    // Only show stars above ~25% of screen height (avoid horizon clutter)
+    float starFade = smoothstep(0.2, 0.5, uv.y);
+
+    // Different star densities for different sizes
+    // Small dim stars (many)
+    if (starNoise > 0.992) {
+        float brightness = (starNoise - 0.992) / (1.0 - 0.992);
+        color += vec3(brightness * 0.5 * starFade);
+    }
+
+    // Larger brighter stars (few) — use a different grid
+    vec2 bigStarCoord = floor(gl_FragCoord.xy / 4.0);
+    float bigStarNoise = random(bigStarCoord + vec2(100.0, 200.0));
+    if (bigStarNoise > 0.998) {
+        float brightness = (bigStarNoise - 0.998) / (1.0 - 0.998);
+        // Slight color tint for big stars
+        vec3 starColor = mix(vec3(1.0, 0.9, 0.8), vec3(0.8, 0.9, 1.0), random(bigStarCoord));
+        color += starColor * brightness * 0.8 * starFade;
     }
 
     gl_FragColor = vec4(color, 1.0);
@@ -85,43 +86,40 @@ void main() {
 
 export default function DynamicBackground() {
     const meshRef = useRef<THREE.Mesh>(null);
+    const { size } = useThree();
 
     const uniforms = useMemo(
         () => ({
-            colorSkyHorizon: { value: new THREE.Color("#4A90E2") }, // Vibrant Sky Blue
-            colorSkyZenith: { value: new THREE.Color("#00005C") },  // Deep Blue
-            colorGroundHorizon: { value: new THREE.Color("#7ED321") }, // Vibrant Green
-            colorGroundDeep: { value: new THREE.Color("#004D00") },    // Deep Green
-            horizonY: { value: -500.0 }, // Horizon is much lower (Y=-500)
-            rangeSky: { value: 1000.0 },
-            rangeGround: { value: 4000.0 }, // Much smoother ground transition
+            resolution: { value: new THREE.Vector2(size.width, size.height) },
+            cameraY: { value: 0.0 },
         }),
-        []
+        [] // eslint-disable-line react-hooks/exhaustive-deps
     );
 
     useFrame((state) => {
         if (meshRef.current) {
-            // Keep background centered on camera X/Z for infinite scrolling
-            // BUT lock Y so the player moves "up and down" inside the sphere (parallax)
-            meshRef.current.position.set(
-                state.camera.position.x,
-                0, // Fixed Y
-                state.camera.position.z
+            const material = meshRef.current.material as THREE.ShaderMaterial;
+            // Update resolution if window resizes
+            material.uniforms.resolution.value.set(
+                state.gl.domElement.width,
+                state.gl.domElement.height
             );
+            // Pass camera Y for subtle parallax
+            material.uniforms.cameraY.value = state.camera.position.y;
         }
     });
 
     return (
-        <mesh ref={meshRef} scale={[1, 1, 1]}>
-            {/* Reduced segment count for optimization (32x32 is plenty for a gradient sphere) */}
-            <sphereGeometry args={[4000, 32, 32]} />
+        <mesh ref={meshRef} frustumCulled={false} renderOrder={-9999}>
+            {/* Simple 1x1 plane — vertex shader stretches it to fullscreen */}
+            <planeGeometry args={[1, 1]} />
             <shaderMaterial
                 vertexShader={vertexShader}
                 fragmentShader={fragmentShader}
                 uniforms={uniforms}
-                side={THREE.BackSide}
-                depthWrite={false} // Don't write to depth buffer so it's always "behind"
-
+                depthWrite={false}
+                depthTest={false}
+                side={THREE.FrontSide}
             />
         </mesh>
     );
