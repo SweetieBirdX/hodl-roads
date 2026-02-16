@@ -41,7 +41,7 @@ function Lights() {
                 ref={lightRef}
                 position={[10, 20, 10]}
                 intensity={1.5}
-                castShadow
+                castShadow={true}
                 shadow-mapSize={[2048, 2048]}
                 shadow-camera-left={-50}
                 shadow-camera-right={50}
@@ -91,11 +91,9 @@ export default function Scene() {
                 shadows
                 dpr={[1, 2]}
                 gl={{ antialias: true, stencil: false, depth: true }}
-                camera={{ position: [0, 5, 20], fov: 50, far: 4000 }}
+                camera={{ position: [0, 5, 20], fov: 50, far: 10000 }}
             >
                 <Lights />
-
-                {/* Background */}
                 <DynamicBackground />
                 <Environment preset="city" background={false} />
 
