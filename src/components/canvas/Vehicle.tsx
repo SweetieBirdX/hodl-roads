@@ -2,7 +2,7 @@
 
 import { useRef, useState, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
-import { RigidBody, RapierRigidBody, useRapier, CuboidCollider, CylinderCollider } from "@react-three/rapier";
+import { RigidBody, RapierRigidBody, useRapier, CuboidCollider } from "@react-three/rapier";
 import { Ray } from "@dimforge/rapier3d-compat";
 import * as THREE from "three";
 import { useKeyboardControls } from "@react-three/drei";
@@ -293,13 +293,13 @@ export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
                 angularDamping={2.0}
             >
                 {/* CHASSIS VISUALS */}
-                <mesh castShadow receiveShadow>
+                <mesh castShadow>
                     <boxGeometry args={[CONFIG.length, 0.6, CONFIG.width]} />
-                    <meshStandardMaterial color="#E67E22" />
+                    <meshStandardMaterial color="#E67E22" side={THREE.DoubleSide} />
                 </mesh>
                 <mesh position={[-CONFIG.length / 4, 0.6, 0]} castShadow>
                     <boxGeometry args={[CONFIG.length / 2.5, 0.8, CONFIG.width]} />
-                    <meshStandardMaterial color="#D35400" />
+                    <meshStandardMaterial color="#D35400" side={THREE.DoubleSide} />
                 </mesh>
 
                 {/* COLLIDERS (Simple Box for Chassis) */}
@@ -309,11 +309,10 @@ export default function Vehicle({ position = [-10, 5, 0] }: VehicleProps) {
 
                 {/* WHEEL COLLIDERS (Prevent clipping when upside down) */}
                 {WHEEL_OFFSETS.map((offset, i) => (
-                    <CylinderCollider
-                        key={`collider-${i}`}
-                        position={[offset.x, 0, offset.z]} // Positioned at chassis center height to avoid ground drag
-                        rotation={[Math.PI / 2, 0, 0]} // Rotate to align with Z axis (Axle)
-                        args={[0.3, 0.5]} // [HalfHeight, Radius] -> Width 0.6, Radius 0.5
+                    <CuboidCollider
+                        key={`wheel-collider-${i}`}
+                        position={[offset.x, 0.6, offset.z]}
+                        args={[0.35, 0.35, 0.3]} // Small box at each wheel position
                     />
                 ))}
 
