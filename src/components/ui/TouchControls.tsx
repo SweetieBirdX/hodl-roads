@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // Map button names to keyboard codes that drei's KeyboardControls expects
 const KEY_MAP: Record<string, string> = {
@@ -24,7 +24,8 @@ function simulateKey(code: string, type: "keydown" | "keyup") {
     );
 }
 
-// Reusable touch button
+// Reusable touch button — uses native addEventListener with { passive: false }
+// to avoid "Unable to preventDefault inside passive event listener" warnings
 function TouchButton({
     action,
     label,
@@ -36,46 +37,80 @@ function TouchButton({
 }) {
     const [pressed, setPressed] = useState(false);
     const code = KEY_MAP[action];
+    const btnRef = useRef<HTMLButtonElement>(null);
+    const pressedRef = useRef(false);
 
-    const handleStart = useCallback(
-        (e: React.TouchEvent | React.MouseEvent) => {
+    useEffect(() => {
+        const el = btnRef.current;
+        if (!el) return;
+
+        const handleStart = (e: TouchEvent) => {
             e.preventDefault();
             e.stopPropagation();
-            if (!pressed) {
+            if (!pressedRef.current) {
+                pressedRef.current = true;
+                setPressed(true);
+                simulateKey(code, "keydown");
+            }
+        };
+
+        const handleEnd = (e: TouchEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (pressedRef.current) {
+                pressedRef.current = false;
+                setPressed(false);
+                simulateKey(code, "keyup");
+            }
+        };
+
+        // Register with { passive: false } so preventDefault works
+        el.addEventListener("touchstart", handleStart, { passive: false });
+        el.addEventListener("touchend", handleEnd, { passive: false });
+        el.addEventListener("touchcancel", handleEnd, { passive: false });
+
+        return () => {
+            el.removeEventListener("touchstart", handleStart);
+            el.removeEventListener("touchend", handleEnd);
+            el.removeEventListener("touchcancel", handleEnd);
+            // Safety: release key if unmounting while pressed
+            if (pressedRef.current) {
+                simulateKey(code, "keyup");
+            }
+        };
+    }, [code]);
+
+    // Mouse fallback for desktop testing
+    const handleMouseDown = useCallback(
+        (e: React.MouseEvent) => {
+            e.preventDefault();
+            if (!pressedRef.current) {
+                pressedRef.current = true;
                 setPressed(true);
                 simulateKey(code, "keydown");
             }
         },
-        [code, pressed]
+        [code]
     );
 
-    const handleEnd = useCallback(
-        (e: React.TouchEvent | React.MouseEvent) => {
+    const handleMouseUp = useCallback(
+        (e: React.MouseEvent) => {
             e.preventDefault();
-            e.stopPropagation();
-            if (pressed) {
+            if (pressedRef.current) {
+                pressedRef.current = false;
                 setPressed(false);
                 simulateKey(code, "keyup");
             }
         },
-        [code, pressed]
+        [code]
     );
-
-    // Safety: release key if component unmounts while pressed
-    useEffect(() => {
-        return () => {
-            if (pressed) simulateKey(code, "keyup");
-        };
-    }, [pressed, code]);
 
     return (
         <button
-            onTouchStart={handleStart}
-            onTouchEnd={handleEnd}
-            onTouchCancel={handleEnd}
-            onMouseDown={handleStart}
-            onMouseUp={handleEnd}
-            onMouseLeave={handleEnd}
+            ref={btnRef}
+            onMouseDown={handleMouseDown}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
             className={`touch-btn ${pressed ? "touch-btn-active" : ""} ${className}`}
             style={{
                 touchAction: "none",
