@@ -5,6 +5,7 @@ import Loading from '@/components/ui/Loading';
 import MainMenu from '@/components/ui/MainMenu';
 import PauseMenu from '@/components/ui/PauseMenu';
 import TurboBar from '@/components/ui/TurboBar';
+import TouchControls, { TouchResetButton } from '@/components/ui/TouchControls';
 import { useGameStore } from '@/store/useGameStore';
 
 // Dynamically import Scene to avoid SSR issues with R3F
@@ -35,16 +36,19 @@ export default function Home() {
             <h1 className="text-2xl font-bold tracking-tighter opacity-50">HODL ROADS</h1>
           </div>
 
-          {/* Pause Button */}
-          <button
-            onClick={pauseGame}
-            className="absolute top-4 right-4 z-10 px-4 py-2 bg-neutral-800/80 text-white rounded-lg font-semibold hover:bg-neutral-700 transition-colors"
-          >
-            Pause
-          </button>
+          {/* Pause & Reset Buttons (top-right) */}
+          <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+            <TouchResetButton />
+            <button
+              onClick={pauseGame}
+              className="px-4 py-2 bg-neutral-800/80 text-white rounded-lg font-semibold hover:bg-neutral-700 transition-colors"
+            >
+              Pause
+            </button>
+          </div>
 
           {/* Control Instructions */}
-          <div className="absolute bottom-4 left-4 z-10 text-neutral-500 text-xs font-mono pointer-events-none">
+          <div className="absolute bottom-4 left-4 z-10 text-neutral-500 text-xs font-mono pointer-events-none keyboard-instructions">
             <div className="flex flex-col gap-1 bg-black/50 p-3 rounded-lg">
               <div className="flex gap-2">
                 <span className="bg-neutral-800 px-2 py-1 rounded text-white">W</span>
@@ -71,6 +75,9 @@ export default function Home() {
 
           {/* Turbo Bar */}
           <TurboBar />
+
+          {/* Mobile Touch Controls */}
+          <TouchControls />
         </>
       )}
 
