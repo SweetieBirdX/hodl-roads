@@ -7,7 +7,7 @@ export default function TurboBar() {
     const isTurboActive = useGameStore((s) => s.isTurboActive);
 
     return (
-        <div className="absolute bottom-4 right-4 z-10 pointer-events-none">
+        <div className="absolute bottom-4 right-4 z-10 pointer-events-none turbo-bar">
             <div className="flex flex-col items-end gap-1">
                 {/* Label */}
                 <span className={`text-xs font-mono ${isTurboActive ? 'text-orange-400' : 'text-neutral-500'}`}>
@@ -19,10 +19,10 @@ export default function TurboBar() {
                     {/* Fuel Fill */}
                     <div
                         className={`h-full rounded-full transition-all duration-100 ${isTurboActive
-                                ? 'bg-orange-500'
-                                : turboFuel < 20
-                                    ? 'bg-red-500'
-                                    : 'bg-white'
+                            ? 'bg-orange-500'
+                            : turboFuel < 20
+                                ? 'bg-red-500'
+                                : 'bg-white'
                             }`}
                         style={{ width: `${turboFuel}%` }}
                     />
