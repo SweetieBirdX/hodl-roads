@@ -56,6 +56,37 @@ body {
   }
 }
 
+/* JS-detected fallback: same rules for .is-touch-device */
+.is-touch-device .touch-controls-container {
+  display: flex;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  padding: 10px 16px;
+  pointer-events: auto;
+}
+
+.is-touch-device .touch-only {
+  display: flex;
+}
+
+.is-touch-device .keyboard-instructions {
+  display: none !important;
+}
+
+.is-touch-device .turbo-bar {
+  top: 58px !important;
+  left: 16px !important;
+  bottom: auto !important;
+  right: auto !important;
+}
+
+.is-touch-device .turbo-bar>div {
+  align-items: flex-start !important;
+}
+
 /* Single bottom bar layout */
 .touch-bar {
   display: flex;

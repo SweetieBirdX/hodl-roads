@@ -137,6 +137,25 @@ export function TouchResetButton() {
 }
 
 export default function TouchControls() {
+    // JS-based touch device detection (fallback for CSS media query)
+    useEffect(() => {
+        const isTouchDevice =
+            "ontouchstart" in window ||
+            navigator.maxTouchPoints > 0 ||
+            window.matchMedia("(pointer: coarse)").matches ||
+            /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+                navigator.userAgent
+            );
+
+        if (isTouchDevice) {
+            document.documentElement.classList.add("is-touch-device");
+        }
+
+        return () => {
+            document.documentElement.classList.remove("is-touch-device");
+        };
+    }, []);
+
     // Prevent context menu on long-press
     useEffect(() => {
         const prevent = (e: Event) => e.preventDefault();
